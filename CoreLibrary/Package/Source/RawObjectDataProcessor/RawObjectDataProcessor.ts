@@ -42,21 +42,23 @@ class RawObjectDataProcessor {
   private readonly validationErrorsMessagesBuilder: RawObjectDataProcessor.ValidationErrorsMessagesBuilder;
   private readonly validationErrorsMessages: Array<string> = [];
 
-  private rawDataIsInvalid: boolean = false;
+  private isRawDataInvalid: boolean = false;
 
 
+  /* ━━━ Public Static Methods ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
   public static process<ProcessedData extends ReadonlyParsedJSON, InterimValidData extends ReadonlyParsedJSON = ProcessedData>(
     rawData: unknown,
     validDataSpecification: RawObjectDataProcessor.ObjectDataSpecification,
     options: RawObjectDataProcessor.Options = {}
   ): RawObjectDataProcessor.ProcessingResult<ProcessedData> {
 
-    const localization: RawObjectDataProcessor.Localization = options.localization ?? RawObjectDataProcessor.defaultLocalization;
     const validationErrorsMessagesBuilder: RawObjectDataProcessor.ValidationErrorsMessagesBuilder =
-        new RawObjectDataProcessor.ValidationErrorsMessagesBuilder(localization);
+        new RawObjectDataProcessor.ValidationErrorsMessagesBuilder(
+          options.localization ?? RawObjectDataProcessor.defaultLocalization
+        );
 
     /* [ Theory ]
-    * Because `typeof null === "object"`, besides `typeof` it's required to check for the null value for the accurate
+    * Because `typeof null` is `"object"`, besides `typeof` it's required to check for the null value for the accurate
     *   error message. */
     if (isNull(rawData)) {
       return {
@@ -73,11 +75,10 @@ class RawObjectDataProcessor {
       };
     }
 
-
     const dataHoldingSelfInstance: RawObjectDataProcessor = new RawObjectDataProcessor({
       rawData,
       fullDataSpecification: validDataSpecification,
-      processingApproach: RawObjectDataProcessor.ProcessingApproaches.newObjectAssembling,
+      processingApproach: options.processingApproach,
       validationErrorsMessagesBuilder
     });
 
@@ -87,7 +88,7 @@ class RawObjectDataProcessor {
 
       case RawObjectDataProcessor.ObjectSubtypes.fixedKeyAndValuePairsObject: {
         rawDataProcessingResult = dataHoldingSelfInstance.processFixedKeyAndValuePairsNonNullObjectTypeValue({
-          targetValue__expectedToBeObject: rawData,
+          targetValue__expectedToBeObject: dataHoldingSelfInstance.rawData,
           targetObjectTypeValueSpecification: {
             ...{ type: RawObjectDataProcessor.ValuesTypesIDs.fixedKeyAndValuePairsObject },
             ...validDataSpecification
@@ -146,6 +147,7 @@ class RawObjectDataProcessor {
       rawDataIsInvalid: false,
       processedData
     };
+
   }
 
   public static formatValidationErrorsList(
@@ -167,7 +169,7 @@ class RawObjectDataProcessor {
   /* [ Theory ] Basically, the switch/case is working, but there are some exceptions.
    * https://stackoverflow.com/q/69848208/4818123
    * https://stackoverflow.com/q/69848689/4818123
-   * [ Approach ] This method is public because it is required for the 'localization'.
+   * [ Approach ] This method is public because it is required for the "localization".
    *  */
   public static getNormalizedValueTypeID(
     valueType: NumberConstructor |
@@ -238,25 +240,30 @@ class RawObjectDataProcessor {
       title: InvalidParameterValueError.localization.defaultTitle,
       occurrenceLocation: "RawObjectDataProcessor.processSingleNeitherUndefinedNorNullValue(valueType)"
     });
+
   }
 
 
+  /* ━━━ Constructor ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
   private constructor(
     parametersObject: {
       rawData: ArbitraryObject;
       fullDataSpecification: RawObjectDataProcessor.ObjectDataSpecification;
-      processingApproach: RawObjectDataProcessor.ProcessingApproaches;
+      processingApproach?: RawObjectDataProcessor.ProcessingApproaches;
       validationErrorsMessagesBuilder: RawObjectDataProcessor.ValidationErrorsMessagesBuilder;
     }
   ) {
     this.rawData = parametersObject.rawData;
     this.fullDataSpecification = parametersObject.fullDataSpecification;
+    this.processingApproach =
+        parametersObject.processingApproach ??
+        RawObjectDataProcessor.ProcessingApproaches.existingObjectManipulation;
     this.currentlyIteratedObjectPropertyQualifiedNameSegmentsForLogging[0] = this.fullDataSpecification.nameForLogging;
-    this.processingApproach = parametersObject.processingApproach;
     this.validationErrorsMessagesBuilder = parametersObject.validationErrorsMessagesBuilder;
   }
 
 
+  /* ━━━ Private Methods ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
   private processFixedKeyAndValuePairsNonNullObjectTypeValue(
     {
       targetValue__expectedToBeObject,
@@ -1979,7 +1986,7 @@ class RawObjectDataProcessor {
 
   /* --- Helpers ---------------------------------------------------------------------------------------------------- */
   private registerValidationError(errorMessage: string): void {
-    this.rawDataIsInvalid = true;
+    this.isRawDataInvalid = true;
     this.validationErrorsMessages.push(errorMessage);
   }
 
@@ -1990,7 +1997,7 @@ class RawObjectDataProcessor {
 
   /* [ Approach ] The alias for the logic clarifying */
   private get isValidationOnlyMode(): boolean {
-    return this.rawDataIsInvalid;
+    return this.isRawDataInvalid;
   }
 
   private static getNormalizedPreValidationModifications(
@@ -2021,6 +2028,7 @@ class RawObjectDataProcessor {
 namespace RawObjectDataProcessor {
 
   export type Options = {
+    processingApproach?: ProcessingApproaches;
     postProcessing?: <InterimValidData, ProcessedData>(interimData: InterimValidData) => ProcessedData;
     localization?: Localization;
   };
@@ -2164,9 +2172,6 @@ namespace RawObjectDataProcessor {
 
   export enum ValuesTypesIDs {
     number = "NUMBER",
-    /* eslint-disable-next-line id-denylist --
-     * This rule is not desired for object keys, but there is no option allows to disable it for the object properties.
-     *  */
     string = "STRING",
     boolean = "BOOLEAN",
     fixedKeyAndValuePairsObject = "FIXED_KEY_AND_VALUE_PAIRS_OBJECT",
@@ -2256,8 +2261,6 @@ namespace RawObjectDataProcessor {
 
   /* --- String value/property -------------------------------------------------------------------------------------- */
   export type StringValueSpecification = ValueSpecification__CommonParameters & {
-    /* eslint-disable-next-line id-denylist --
-     * This rule is not desired for object keys, but there is no option allows to disable it for the object properties. */
     readonly type: ValuesTypesIDs.string | StringConstructor;
     readonly allowedAlternatives?: ReadonlyArray<string> | ReadonlyArray<Readonly<{ key: string; value: string; }>>;
     readonly minimalCharactersCount?: number;
